@@ -455,6 +455,10 @@ class Trainer:
                 self.fsdp = ShardingStrategy.FULL_SHARD
             elif FSDPOption.SHARD_GRAD_OP in args.fsdp:
                 self.fsdp = ShardingStrategy.SHARD_GRAD_OP
+            elif FSDPOption.HYBRID_SHARD in args.fsdp:
+                self.fsdp = ShardingStrategy.HYBRID_SHARD
+            elif FSDPOption._HYBRID_SHARD_ZERO2 in args.fsdp:
+                self.fsdp = ShardingStrategy._HYBRID_SHARD_ZERO2
             elif FSDPOption.NO_SHARD in args.fsdp:
                 self.fsdp = ShardingStrategy.NO_SHARD
 
@@ -1219,6 +1223,7 @@ class Trainer:
                 optimizer=self.optimizer if optimizer is None else optimizer,
                 num_warmup_steps=self.args.get_warmup_steps(num_training_steps),
                 num_training_steps=num_training_steps,
+                num_cycles=self.args.num_cycles
             )
         return self.lr_scheduler
 
