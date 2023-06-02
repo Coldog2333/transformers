@@ -228,6 +228,8 @@ class TrainingArguments:
             Ratio of total training steps used for a linear warmup from 0 to `learning_rate`.
         warmup_steps (`int`, *optional*, defaults to 0):
             Number of steps used for a linear warmup from 0 to `learning_rate`. Overrides any effect of `warmup_ratio`.
+        num_cycles (`float`, *optional*, defaults to 0.5):
+            Number of waves to perform (using cosine learning rate decay).
         log_level (`str`, *optional*, defaults to `passive`):
             Logger log level to use on the main process. Possible choices are the log levels as strings: 'debug',
             'info', 'warning', 'error' and 'critical', plus a 'passive' level which doesn't set anything and keeps the
