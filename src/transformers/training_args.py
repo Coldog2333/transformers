@@ -691,6 +691,8 @@ class TrainingArguments:
         default=0.0, metadata={"help": "Linear warmup over warmup_ratio fraction of total steps."}
     )
     warmup_steps: int = field(default=0, metadata={"help": "Linear warmup over warmup_steps."})
+    # scheduler
+    num_cycles: float = field(default=0.5, metadata={"help": "Number of cycles for cosine scheduler."})
 
     log_level: Optional[str] = field(
         default="passive",
