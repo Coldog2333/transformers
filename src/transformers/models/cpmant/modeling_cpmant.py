@@ -378,7 +378,7 @@ class CpmAntEncoder(nn.Module):
         """
         all_hidden_states = () if output_hidden_states else None
         all_self_attns = () if output_attentions else None
-        current_key_values = [] if use_cache else None
+        current_key_values = () if use_cache else None
 
         for i, layer in enumerate(self.layers):
             if output_hidden_states:
@@ -395,7 +395,7 @@ class CpmAntEncoder(nn.Module):
             if output_attentions:
                 all_self_attns += (attn_weights,)
             if current_key_value is not None:
-                current_key_values.append(current_key_value)
+                current_key_values = current_key_values + (current_key_value,)
 
         hidden_states = self.output_layernorm(hidden_states)
 
@@ -537,7 +537,6 @@ class CpmAntPreTrainedModel(PreTrainedModel):
     config_class = CpmAntConfig
     base_model_prefix = "cpmant"
     supports_gradient_checkpointing = True
-    _keys_to_ignore_on_load_missing = [r"position_ids"]
 
     def _init_weights(self, module):
         """Initialize the weights"""
@@ -659,7 +658,7 @@ class CpmAntModel(CpmAntPreTrainedModel):
         output_hidden_states = (
             output_hidden_states if output_hidden_states is not None else self.config.output_hidden_states
         )
-        return_dict = return_dict if return_dict is not None else self.config.return_dict
+        return_dict = return_dict if return_dict is not None else self.config.use_return_dict
         use_cache = use_cache if use_cache is not None else self.config.use_cache
 
         # add prompts ahead
@@ -749,7 +748,7 @@ class CpmAntModel(CpmAntPreTrainedModel):
     CPMANT_START_DOCSTRING,
 )
 class CpmAntForCausalLM(CpmAntPreTrainedModel):
-    _keys_to_ignore_on_load_missing = [r"lm_head.weight"]
+    _tied_weights_keys = ["lm_head.weight"]
 
     def __init__(self, config: CpmAntConfig):
         super().__init__(config)

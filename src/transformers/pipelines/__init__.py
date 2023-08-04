@@ -63,6 +63,7 @@ from .fill_mask import FillMaskPipeline
 from .image_classification import ImageClassificationPipeline
 from .image_segmentation import ImageSegmentationPipeline
 from .image_to_text import ImageToTextPipeline
+from .mask_generation import MaskGenerationPipeline
 from .object_detection import ObjectDetectionPipeline
 from .question_answering import QuestionAnsweringArgumentHandler, QuestionAnsweringPipeline
 from .table_question_answering import TableQuestionAnsweringArgumentHandler, TableQuestionAnsweringPipeline
@@ -87,11 +88,6 @@ if is_tf_available():
     import tensorflow as tf
 
     from ..models.auto.modeling_tf_auto import (
-        TF_MODEL_FOR_QUESTION_ANSWERING_MAPPING,
-        TF_MODEL_FOR_SEQ_TO_SEQ_CAUSAL_LM_MAPPING,
-        TF_MODEL_FOR_SEQUENCE_CLASSIFICATION_MAPPING,
-        TF_MODEL_FOR_TOKEN_CLASSIFICATION_MAPPING,
-        TF_MODEL_WITH_LM_HEAD_MAPPING,
         TFAutoModel,
         TFAutoModelForCausalLM,
         TFAutoModelForImageClassification,
@@ -109,13 +105,6 @@ if is_torch_available():
     import torch
 
     from ..models.auto.modeling_auto import (
-        MODEL_FOR_MASKED_LM_MAPPING,
-        MODEL_FOR_QUESTION_ANSWERING_MAPPING,
-        MODEL_FOR_SEQ_TO_SEQ_CAUSAL_LM_MAPPING,
-        MODEL_FOR_SEQUENCE_CLASSIFICATION_MAPPING,
-        MODEL_FOR_TABLE_QUESTION_ANSWERING_MAPPING,
-        MODEL_FOR_TOKEN_CLASSIFICATION_MAPPING,
-        MODEL_FOR_VISUAL_QUESTION_ANSWERING_MAPPING,
         AutoModel,
         AutoModelForAudioClassification,
         AutoModelForCausalLM,
@@ -124,6 +113,7 @@ if is_torch_available():
         AutoModelForImageClassification,
         AutoModelForImageSegmentation,
         AutoModelForMaskedLM,
+        AutoModelForMaskGeneration,
         AutoModelForObjectDetection,
         AutoModelForQuestionAnswering,
         AutoModelForSemanticSegmentation,
@@ -384,6 +374,13 @@ SUPPORTED_TASKS = {
         "default": {"model": {"pt": ("MCG-NJU/videomae-base-finetuned-kinetics", "4800870")}},
         "type": "video",
     },
+    "mask-generation": {
+        "impl": MaskGenerationPipeline,
+        "tf": (),
+        "pt": (AutoModelForMaskGeneration,) if is_torch_available() else (),
+        "default": {"model": {"pt": ("facebook/sam-vit-huge", "997b15")}},
+        "type": "multimodal",
+    },
 }
 
 NO_FEATURE_EXTRACTOR_TASKS = set()
@@ -416,11 +413,20 @@ def get_supported_tasks() -> List[str]:
     return PIPELINE_REGISTRY.get_supported_tasks()
 
 
-def get_task(model: str, use_auth_token: Optional[str] = None) -> str:
+def get_task(model: str, token: Optional[str] = None, **deprecated_kwargs) -> str:
+    use_auth_token = deprecated_kwargs.pop("use_auth_token", None)
+    if use_auth_token is not None:
+        warnings.warn(
+            "The `use_auth_token` argument is deprecated and will be removed in v5 of Transformers.", FutureWarning
+        )
+        if token is not None:
+            raise ValueError("`token` and `use_auth_token` are both specified. Please set only the argument `token`.")
+        token = use_auth_token
+
     if is_offline_mode():
         raise RuntimeError("You cannot infer task automatically within `pipeline` when using offline mode")
     try:
-        info = model_info(model, token=use_auth_token)
+        info = model_info(model, token=token)
     except Exception as e:
         raise RuntimeError(f"Instantiating a pipeline without a task set raised an error: {e}")
     if not info.pipeline_tag:
@@ -496,7 +502,7 @@ def clean_custom_task(task_info):
 
 def pipeline(
     task: str = None,
-    model: Optional = None,
+    model: Optional[Union[str, "PreTrainedModel", "TFPreTrainedModel"]] = None,
     config: Optional[Union[str, PretrainedConfig]] = None,
     tokenizer: Optional[Union[str, PreTrainedTokenizer, "PreTrainedTokenizerFast"]] = None,
     feature_extractor: Optional[Union[str, PreTrainedFeatureExtractor]] = None,
@@ -504,7 +510,7 @@ def pipeline(
     framework: Optional[str] = None,
     revision: Optional[str] = None,
     use_fast: bool = True,
-    use_auth_token: Optional[Union[str, bool]] = None,
+    token: Optional[Union[str, bool]] = None,
     device: Optional[Union[int, str, "torch.device"]] = None,
     device_map=None,
     torch_dtype=None,
@@ -536,6 +542,7 @@ def pipeline(
             - `"image-classification"`: will return a [`ImageClassificationPipeline`].
             - `"image-segmentation"`: will return a [`ImageSegmentationPipeline`].
             - `"image-to-text"`: will return a [`ImageToTextPipeline`].
+            - `"mask-generation"`: will return a [`MaskGenerationPipeline`].
             - `"object-detection"`: will return a [`ObjectDetectionPipeline`].
             - `"question-answering"`: will return a [`QuestionAnsweringPipeline`].
             - `"summarization"`: will return a [`SummarizationPipeline`].
@@ -624,10 +631,10 @@ def pipeline(
             Whether or not to allow for custom code defined on the Hub in their own modeling, configuration,
             tokenization or even pipeline files. This option should only be set to `True` for repositories you trust
             and in which you have read the code, as it will execute code present on the Hub on your local machine.
-        model_kwargs:
+        model_kwargs (`Dict[str, Any]`, *optional*):
             Additional dictionary of keyword arguments passed along to the model's `from_pretrained(...,
             **model_kwargs)` function.
-        kwargs:
+        kwargs (`Dict[str, Any]`, *optional*):
             Additional keyword arguments passed along to the specific pipeline init (see the documentation for the
             corresponding pipeline class for possible values).
 
@@ -656,10 +663,18 @@ def pipeline(
         model_kwargs = {}
     # Make sure we only pass use_auth_token once as a kwarg (it used to be possible to pass it in model_kwargs,
     # this is to keep BC).
-    use_auth_token = model_kwargs.pop("use_auth_token", use_auth_token)
+    use_auth_token = model_kwargs.pop("use_auth_token", None)
+    if use_auth_token is not None:
+        warnings.warn(
+            "The `use_auth_token` argument is deprecated and will be removed in v5 of Transformers.", FutureWarning
+        )
+        if token is not None:
+            raise ValueError("`token` and `use_auth_token` are both specified. Please set only the argument `token`.")
+        token = use_auth_token
+
     hub_kwargs = {
         "revision": revision,
-        "use_auth_token": use_auth_token,
+        "token": token,
         "trust_remote_code": trust_remote_code,
         "_commit_hash": None,
     }
@@ -727,9 +742,8 @@ def pipeline(
                     " set the option `trust_remote_code=True` to remove this error."
                 )
             class_ref = targeted_task["impl"]
-            module_file, class_name = class_ref.split(".")
             pipeline_class = get_class_from_dynamic_module(
-                model, module_file + ".py", class_name, revision=revision, use_auth_token=use_auth_token
+                class_ref, model, revision=revision, use_auth_token=use_auth_token
             )
     else:
         normalized_task, targeted_task, task_options = check_task(task)
@@ -772,19 +786,19 @@ def pipeline(
 
     model_name = model if isinstance(model, str) else None
 
-    # Infer the framework from the model
-    # Forced if framework already defined, inferred if it's None
-    # Will load the correct model if possible
-    model_classes = {"tf": targeted_task["tf"], "pt": targeted_task["pt"]}
-    framework, model = infer_framework_load_model(
-        model,
-        model_classes=model_classes,
-        config=config,
-        framework=framework,
-        task=task,
-        **hub_kwargs,
-        **model_kwargs,
-    )
+    # Load the correct model if possible
+    # Infer the framework from the model if not already defined
+    if isinstance(model, str) or framework is None:
+        model_classes = {"tf": targeted_task["tf"], "pt": targeted_task["pt"]}
+        framework, model = infer_framework_load_model(
+            model,
+            model_classes=model_classes,
+            config=config,
+            framework=framework,
+            task=task,
+            **hub_kwargs,
+            **model_kwargs,
+        )
 
     model_config = model.config
     hub_kwargs["_commit_hash"] = model.config._commit_hash
