@@ -39,12 +39,13 @@ logger = logging.get_logger(__name__)
 try:
     # from xformers import ops as xops
     from flash_attn import flash_attn_qkvpacked_func, flash_attn_func
+    using_flash_attn = True
 except ImportError:
     # xops = None
     # logger.warn(
     #     "Xformers is not installed correctly. If you want to use memory_efficient_attention to accelerate training use the following command to install Xformers\npip install xformers."
     # )
-    flash_attn = None
+    using_flash_attn = False
     logger.warn(
         "FlashAttention is not installed correctly. If you want to use memory_efficient_attention to accelerate training use the following command to install FlashAttention\npip install flash-attn --no-build-isolation"
     )
@@ -347,7 +348,7 @@ class LlamaAttention(nn.Module):
         key_states = repeat_kv(key_states, self.num_key_value_groups)
         value_states = repeat_kv(value_states, self.num_key_value_groups)
 
-        if self.config.use_memory_efficient_attention and flash_attn is not None and self.training:
+        if self.config.use_memory_efficient_attention and using_flash_attn and self.training:
             attn_weights = None
             # FlashAttention requires q/k/v: (batch_size, seqlen, nheads, headdim)
             query_states = query_states.transpose(1, 2)
